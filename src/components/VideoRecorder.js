@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { startVideoGeneration, startResponseGeneration } from '../api/aiService'; // 导入 sendVideoFrame 函数
 
 function VideoRecorder() {
     const [isRecording, setIsRecording] = useState(false); // 记录是否正在录制
@@ -7,6 +8,7 @@ function VideoRecorder() {
     const [generateVideo, setGenerateVideo] = useState(false); // 是否生成视频
     const [screenshot, setScreenshot] = useState(null); // 存储截图
     const [screenshotTime, setScreenshotTime] = useState(''); // 存储截图时刻信息
+    const [videoResult, setVideoResult] = useState(null); // 存储视频生成结果
     const mediaRecorderRef = useRef(null); // 引用媒体录制器
     const videoRef = useRef(null); // 引用摄像头视频元素
     const playbackRef = useRef(null); // 引用播放录制视频的元素
@@ -59,9 +61,60 @@ function VideoRecorder() {
         setChatMessage(event.target.value); // 更新聊天消息
     };
 
-    const handleGenerateVideo = () => {
-        setGenerateVideo(!generateVideo); // 切换生成视频状态
-        console.log('生成视频:', !generateVideo); // 调试信息
+    const setGenerateVideoConfirm = () => {
+        setGenerateVideo(!generateVideo)
+    }
+    const handleGenerateVideo = async () => {
+        // setGenerateVideo(generateVideo); // 切换生成视频状态
+        console.log('生成视频:', generateVideo); // 调试信息
+
+        if (generateVideo && chatMessage) { // 如果选择生成视频且chatMessage存在
+            const model = 'cogvideox'; // 使用提供的模型编码
+            const prompt = chatMessage; // 使用聊天消息作为 prompt
+            const imageUrl = screenshot || (playbackRef.current ? captureLastFrame() : null); // 使用截图作为 image_url
+            const requestId = Date.now().toString(); // 生成唯一请求 ID
+            const userId = 'your_user_id'; // 替换为实际用户 ID
+
+            try {
+                const result = await startVideoGeneration(model, prompt, imageUrl, requestId, userId); // 调用 API
+                if (result && result.task_status === 'SUCCESS') {
+                    setVideoResult(result.video_result); // 更新状态为 video_result 数组
+                } else {
+                    console.error('生成视频失败或状态不正确:', result.task_status); // 处理失败情况
+                }
+                
+            } catch (error) {
+                console.error('生成视频时出错:', error); // 错误处理
+            }
+        } else {
+            if (chatMessage) {
+                const model = 'glm-4-flash'; // 使用提供的模型编码
+                const requestId = Date.now().toString(); // 生成唯一请求 ID
+                const userId = 'your_user_id'; // 替换为实际用户 ID
+                // // https://open.bigmodel.cn/api/paas/v4/chat/completions
+                // try {
+                //     const result = await startResponseGeneration(model, prompt, imageUrl, requestId, userId); // 调用 API
+                //     if (result && result.task_status === 'SUCCESS') {
+                //         setVideoResult(result.video_result); // 更新状态为 video_result 数组
+                //     } else {
+                //         console.error('生成视频失败或状态不正确:', result.task_status); // 处理失败情况
+                //     }
+                    
+                // } catch (error) {
+                //     console.error('生成视频时出错:', error); // 错误处理
+                // }
+            }
+        }
+    };
+
+    // 捕获视频的最后一帧
+    const captureLastFrame = () => {
+        const canvas = document.createElement('canvas'); // 创建一个画布
+        const context = canvas.getContext('2d'); // 获取画布的上下文
+        canvas.width = playbackRef.current.videoWidth; // 设置画布宽度
+        canvas.height = playbackRef.current.videoHeight; // 设置画布高度
+        context.drawImage(playbackRef.current, 0, 0, canvas.width, canvas.height); // 将视频最后一帧绘制到画布上
+        return canvas.toDataURL('image/png'); // 返回最后一帧的图片 URL
     };
 
     const captureScreenshot = () => {
@@ -110,18 +163,33 @@ function VideoRecorder() {
                                 <input
                                     type="checkbox"
                                     checked={generateVideo}
-                                    onChange={handleGenerateVideo}
+                                    onChange={setGenerateVideoConfirm}
                                 />
                                 生成视频
                             </label>
                         </div>
-                        <button onClick={() => console.log('开始生成视频')}>开始</button>
+                        <button onClick={handleGenerateVideo}>askVitiv</button> {/* 生成视频按钮 */}
                         <button onClick={captureScreenshot}>捕获当前画面</button> {/* 捕获按钮 */}
                         {screenshot && (
                             <div>
                                 <h3>截图：</h3>
                                 <img src={screenshot} alt="Screenshot" style={{ width: '300px' }} /> {/* 显示截图 */}
-                                <p>截图时刻: {screenshotTime} 秒</p> {/* 显示截图时刻信息 */}
+                                <p>截图时刻: {screenshotTime} </p> {/* 显示截图时刻信息 */}
+                            </div>
+                        )}
+                        {videoResult && (
+                            <div>
+                                <h3>生成的视频结果：</h3>
+                                {videoResult.map((video, index) => (
+                                    <div key={index}>
+                                        <video controls poster={video.cover_image_url} style={{ width: '100%', maxWidth: '600px' }}>
+                                            <source src={video.url} type="video/mp4" />
+                                            您的浏览器不支持视频播放。
+                                        </video> {/* 直接展示生成的视频 */}
+                                        <p>视频 URL: <a href={video.url} target="_blank" rel="noopener noreferrer">{video.url}</a></p>
+                                        
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
